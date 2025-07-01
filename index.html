@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevMap - Geliştirici Profil Radarı</title>
+    
+    <!-- Google Fonts: Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- CSS Dosyamız -->
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- Plotly.js (Grafikler için) - GÜNCELLENDİ -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Başlık Alanı -->
+        <header>
+            <h1>DevMap 🗺️</h1>
+            <p class="subtitle">Aradığınız Geliştiricinin Potansiyelini Haritalandırın</p>
+        </header>
+
+        <main>
+            <!-- Kullanıcı Giriş Alanı -->
+            <div class="search-box">
+                <div class="input-container">
+                    <input type="text" id="name-input" placeholder="Geliştirici Adı Soyadı...">
+                    <button id="analyze-button">Analiz Et</button>
+                </div>
+
+                <div class="options-container">
+                    <div class="platform-selection">
+                        <span>Platformlar:</span>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="github-checkbox" checked>
+                            <span class="checkbox-custom"></span>
+                            GitHub
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="kaggle-checkbox">
+                            <span class="checkbox-custom"></span>
+                            Kaggle
+                        </label>
+                    </div>
+                    <a href="#" id="manual-toggle">veya manuel olarak ekle</a>
+                </div>
+                
+                <div id="manual-inputs" class="hidden">
+                    <input type="text" id="github-link-input" placeholder="GitHub profil linki...">
+                    <input type="text" id="kaggle-link-input" placeholder="Kaggle profil linki...">
+                </div>
+            </div>
+
+            <!-- Yükleniyor Animasyonu -->
+            <div id="loader" class="hidden">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+
+            <!-- Hata Mesajı Alanı -->
+            <div id="error-container" class="hidden"></div>
+
+            <!-- Sonuçların Gösterileceği Dashboard -->
+            <div id="dashboard" class="hidden">
+                <!-- Sol Taraf: Profil Bilgileri -->
+                <div id="profile-sidebar">
+                    <img id="user-avatar" src="https://placehold.co/150x150/2d3748/e2e8f0?text=Avatar" alt="Kullanıcı Avatarı">
+                    <h2 id="user-name">Kullanıcı Adı</h2>
+                    <p id="user-login" class="user-login-text"></p>
+                    <p id="user-bio">Kullanıcı biyografisi burada görünecek.</p>
+                    <a id="profile-link" href="#" target="_blank" class="profile-link-button">Profili Görüntüle</a>
+                    <div id="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-value" id="repo-count">0</span>
+                            <span class="stat-label">Repository</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="follower-count">0</span>
+                            <span class="stat-label">Takipçi</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="following-count">0</span>
+                            <span class="stat-label">Takip Edilen</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="star-count">0</span>
+                            <span class="stat-label">Toplam Yıldız</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sağ Taraf: Grafikler ve Detaylar -->
+                <div id="main-content">
+                    <div class="chart-wrapper">
+                        <h3>GitHub Dil Dağılımı</h3>
+                        <div id="language-chart-container"></div>
+                    </div>
+                    <!-- Kaggle verileri için gelecekteki alan -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Alt Bilgi -->
+        <footer>
+            <p>DevMap Projesi</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript Dosyamız -->
+    <script src="script.js"></script>
+</body>
+</html>

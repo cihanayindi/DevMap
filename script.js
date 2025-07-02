@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Gerekli tüm HTML elementlerini seçiyoruz
     const nameInput = document.getElementById('name-input');
     const analyzeButton = document.getElementById('analyze-button');
     const loader = document.getElementById('loader');
@@ -12,33 +11,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const githubLinkInput = document.getElementById('github-link-input');
     const kaggleLinkInput = document.getElementById('kaggle-link-input');
 
-    // Örnek API adresi. Bu, kendi FastAPI backend'inizle değiştirilmelidir.
-    const GITHUB_API_BASE_URL = 'https://api.github.com';
+    const DEVMAP_API_BASE_URL = 'http://localhost:8000'; // FastAPI adresiniz
 
-    // --- OLAY DİNLEYİCİLERİ ---
-
-    // Analiz butonuna tıklama
     analyzeButton.addEventListener('click', handleAnalysis);
-    
-    // Enter tuşuna basıldığında analizi tetikle
+
     nameInput.addEventListener('keyup', (event) => {
         if (event.key === 'Enter') handleAnalysis();
     });
 
-    // Manuel giriş alanını göster/gizle
     manualToggle.addEventListener('click', (e) => {
         e.preventDefault();
         manualInputs.classList.toggle('hidden');
     });
 
-    // --- ANA FONKSİYONLAR ---
-
-    /**
-     * Analiz sürecini başlatan ana fonksiyon
-     */
     async function handleAnalysis() {
-        resetUI(); // Arayüzü temizle
-        
+        resetUI();
+
         const githubChecked = githubCheckbox.checked;
         const kaggleChecked = kaggleCheckbox.checked;
 
@@ -47,99 +35,81 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        loader.classList.remove('hidden'); // Yükleyiciyi göster
+        loader.classList.remove('hidden');
 
         try {
-            // Sadece GitHub analizi seçiliyse...
             if (githubChecked) {
-                const username = getGitHubUsername();
-                if (!username) {
-                    throw new Error("Lütfen bir Geliştirici Adı veya geçerli bir GitHub linki girin.");
+                const usernameOrLink = nameInput.value.trim(); // "Ad Soyad" veya kullanıcı adı
+                const githubManualLink = githubLinkInput.value.trim(); // Manuel link
+
+                let userInputForBackend;
+                let platformToAnalyze = "github";
+
+                // Manuel link girildiyse, ondan kullanıcı adını çıkar
+                if (githubManualLink) {
+                    try {
+                        const url = new URL(githubManualLink);
+                        if (url.hostname === 'github.com') {
+                            userInputForBackend = url.pathname.split('/')[1];
+                            if (!userInputForBackend) {
+                                throw new Error("Geçersiz GitHub linki. Kullanıcı adı bulunamadı.");
+                            }
+                        } else {
+                            throw new Error("Geçersiz GitHub linki. Lütfen 'github.com' adresli bir link girin.");
+                        }
+                    } catch (e) {
+                        showError(e.message);
+                        return;
+                    }
+                } else if (usernameOrLink) {
+                    // Sadece "Ad Soyad" veya kullanıcı adı girildiyse
+                    userInputForBackend = usernameOrLink;
+                } else {
+                    showError("Lütfen bir Geliştirici Adı veya geçerli bir GitHub linki girin.");
+                    return;
                 }
-                
-                // Kendi FastAPI backend'inize tek bir istek atacaksınız.
-                // Örnek olması açısından doğrudan GitHub API'sine birkaç istek atıyoruz.
-                const userData = await fetchUserData(username);
-                const reposData = await fetchReposData(username);
-                const analyzedData = analyzeGitHubData(userData, reposData);
+
+                // Backend'e analizi başlatması için tek bir istek gönder
+                const analyzedData = await fetchAnalysisFromBackend(platformToAnalyze, userInputForBackend);
                 displayDashboard(analyzedData);
             }
-            
-            // Kaggle analizi de eklenebilir
+
             if (kaggleChecked) {
-                // TODO: Kaggle analiz mantığı buraya eklenecek.
+                // TODO: Kaggle analizi için benzer mantığı uygulayın.
+                // Örneğin: const kaggleUsername = getKaggleUsername();
+                // const kaggleData = await fetchAnalysisFromBackend("kaggle", kaggleUsername);
                 console.log("Kaggle analizi isteniyor...");
             }
 
         } catch (error) {
-            showError(error.message);
+            console.error("Analiz hatası:", error);
+            showError(error.message || "Bilinmeyen bir hata oluştu.");
         } finally {
-            loader.classList.add('hidden'); // Yükleyiciyi gizle
+            loader.classList.add('hidden');
         }
     }
 
-    /**
-     * Gerekli GitHub kullanıcı adını manuel linkten veya giriş kutusundan alır.
-     */
-    function getGitHubUsername() {
-        const githubLink = githubLinkInput.value.trim();
-        if (githubLink) {
-            try {
-                const url = new URL(githubLink);
-                if (url.hostname === 'github.com') {
-                    // Path'ten kullanıcı adını al (/kullaniciadi)
-                    return url.pathname.split('/')[1];
-                }
-            } catch (e) {
-                return null; // Geçersiz URL
-            }
-        }
-        return nameInput.value.trim();
-    }
+    // Backend'e analiz isteği gönderen ana fonksiyon
+    async function fetchAnalysisFromBackend(platform, userinput) {
+        const url = `${DEVMAP_API_BASE_URL}/api/analyze/${platform}/${encodeURIComponent(userinput)}`;
 
+        const response = await fetch(url, {
+            method: "POST"
+        });
 
-    // --- VERİ ÇEKME VE İŞLEME ---
-
-    async function fetchUserData(username) {
-        const response = await fetch(`${GITHUB_API_BASE_URL}/users/${username}`);
         if (!response.ok) {
-            if (response.status === 404) throw new Error('GitHub kullanıcısı bulunamadı.');
-            throw new Error('GitHub API isteği başarısız oldu.');
+            const errorData = await response.json().catch(() => ({ detail: "Bilinmeyen sunucu hatası" }));
+            throw new Error(`Analiz başarısız oldu: ${response.status} - ${errorData.detail || response.statusText}`);
         }
         return response.json();
     }
-    
-    async function fetchReposData(username) {
-        const response = await fetch(`${GITHUB_API_BASE_URL}/users/${username}/repos?per_page=100`);
-        if (!response.ok) return [];
-        return response.json();
-    }
 
-    function analyzeGitHubData(userData, reposData) {
-        const languages = reposData
-            .filter(repo => repo.language)
-            .reduce((acc, repo) => {
-                acc[repo.language] = (acc[repo.language] || 0) + 1;
-                return acc;
-            }, {});
-        
-        const totalStars = reposData.reduce((acc, repo) => acc + repo.stargazers_count, 0);
+    // Eski GitHub API çağırma ve analiz fonksiyonları artık kullanılmayacak
+    // async function fetchUserData(username) { ... }
+    // async function fetchReposData(username) { ... }
+    // function analyzeGitHubData(userData, reposData) { ... }
 
-        return {
-            avatar_url: userData.avatar_url,
-            name: userData.name || userData.login,
-            login: userData.login,
-            bio: userData.bio || 'Kullanıcı bir biyografi belirtmemiş.',
-            html_url: userData.html_url,
-            public_repos: userData.public_repos,
-            followers: userData.followers,
-            following: userData.following,
-            total_stars: totalStars,
-            languages: languages
-        };
-    }
-
-    // --- ARAYÜZ GÜNCELLEME ---
+    // ... (displayDashboard, createLanguageChart, showError, resetUI fonksiyonları aynı kalacak) ...
 
     function displayDashboard(data) {
         document.getElementById('user-avatar').src = data.avatar_url;

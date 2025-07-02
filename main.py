@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel
 import httpx # HTTP istekleri için
-from typing import Optional
+from typing import Optional, Annotated
 
 # Logging seviyesini DEBUG olarak ayarlayalım, böylece daha fazla bilgi görebiliriz
 logging.basicConfig(level=logging.INFO) # Geliştirme aşamasında INFO veya DEBUG olabilir
@@ -23,6 +23,11 @@ if SERPER_API_KEY:
     logging.info("SERPER_API_KEY başarıyla yüklendi.")
 else:
     logging.warning("SERPER_API_KEY bulunamadı veya boş. Lütfen .env dosyanızı kontrol edin.")
+
+class AnalyzeRequest(BaseModel):
+    platform: str
+    user_input: str
+    input_type: Optional[str] = None
 
 
 app = FastAPI(title="DevMapAPI")
@@ -213,35 +218,42 @@ async def send_request_to_githubapi(username: str):
 
 
 
-@app.post("/api/analyze/{platform}/{userinput}")
-async def find_account(platform: str, userinput: str):
+@app.post("/api/analyze")
+async def analyze_profile(request: AnalyzeRequest):
     """
-    Kullanıcı adı veya ad soyad ve platforma göre hesap analizi yapar.
+    Verilen bilgilere göre bir geliştirici profilini analiz eder.
     """
-    
-    if platform.lower() == "github":
-        github_username = userinput # Varsayılan olarak userinput direkt kullanıcı adıdır
+    platform = request.platform.lower()
+    user_input = request.user_input
+    input_type = request.input_type
 
-        result = await is_probable_github_username(userinput)
-        if isinstance(result, str):  # username bulundu
-            github_username = result
-        elif result is False:
-            logging.info(f"GitHub kullanıcı adı bulunamadı, '{userinput}' direkt denenecek.")
-        
-        # Eğer userinput bir link ise, kullanıcı adını linkten çıkar
-        elif "github.com" in userinput.lower():
-            github_username = extract_username(userinput, expected_domain="github.com")
+    if platform == "github":
+        github_username = None
+
+        # 1. Girdi tipi "direct_username" ise aramayı atla
+        #    (Frontend bir linkten kullanıcı adını çıkardığında bunu gönderecek)
+        if input_type == "direct_username":
+            logging.info(f"İstek tipi 'direct_username'. Arama atlanıyor. Kullanıcı adı: {user_input}")
+            github_username = user_input
+        # 2. Girdi bir link ise, kullanıcı adını çıkar
+        elif "github.com" in user_input.lower():
+            github_username = extract_username(user_input, "github.com")
+        # 3. Diğer durumlarda (ad-soyad vb.), Google araması yap
+        else:
+            found_username = await search_github_username_via_google(user_input)
+            if found_username:
+                github_username = found_username
+            else:
+                # Arama başarısız olursa, girdinin kendisini dene
+                logging.warning(f"Google araması '{user_input}' için sonuç bulamadı. Girdinin kendisi deneniyor.")
+                github_username = user_input
+
+        if not github_username:
+            raise HTTPException(status_code=400, detail="Geçerli bir GitHub kullanıcı adı belirlenemedi.")
 
         return await send_request_to_githubapi(github_username)
-        
-    elif platform.lower() == 'kaggle':
-        pass
+
+    elif platform == "kaggle":
+        raise HTTPException(status_code=501, detail="Kaggle desteği henüz yok.")
     else:
         raise HTTPException(status_code=400, detail="Desteklenmeyen platform.")
-
-
-@app.get("/api/get/analyze")
-def get_analyze():
-    return {
-        "message": "DevMap API is running. Use /api/analyze/{platform}/{username} to analyze profiles."
-    }

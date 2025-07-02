@@ -39,38 +39,83 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             if (githubChecked) {
-                const usernameOrLink = nameInput.value.trim(); // "Ad Soyad" veya kullanıcı adı
-                const githubManualLink = githubLinkInput.value.trim(); // Manuel link
+                const usernameOrSearchTerm = nameInput.value.trim();
+                const githubManualLink = githubLinkInput.value.trim();
 
                 let userInputForBackend;
-                let platformToAnalyze = "github";
+                let inputTypeForBackend = null;
 
-                // Manuel link girildiyse, ondan kullanıcı adını çıkar
                 if (githubManualLink) {
+                    // Manuel link senaryosu (Bu kısım zaten doğru çalışıyor)
                     try {
                         const url = new URL(githubManualLink);
-                        if (url.hostname === 'github.com') {
+                        if (url.hostname === 'github.com' && url.pathname.split('/')[1]) {
                             userInputForBackend = url.pathname.split('/')[1];
-                            if (!userInputForBackend) {
-                                throw new Error("Geçersiz GitHub linki. Kullanıcı adı bulunamadı.");
-                            }
+                            inputTypeForBackend = 'direct_username';
                         } else {
-                            throw new Error("Geçersiz GitHub linki. Lütfen 'github.com' adresli bir link girin.");
+                            throw new Error();
                         }
                     } catch (e) {
-                        showError(e.message);
+                        showError("Geçersiz GitHub linki. Lütfen geçerli bir profil linki girin.");
+                        loader.classList.add('hidden'); // Loader'ı gizle
                         return;
                     }
-                } else if (usernameOrLink) {
-                    // Sadece "Ad Soyad" veya kullanıcı adı girildiyse
-                    userInputForBackend = usernameOrLink;
+                } else if (usernameOrSearchTerm) {
+                    // --- BURASI YENİ VE GELİŞTİRİLMİŞ MANTIK ---
+                    try {
+                        // Girdinin bir URL olup olmadığını anlamaya çalış.
+                        // Eğer "new URL()" başarısız olursa, catch bloğu çalışır ve bunun bir arama terimi olduğunu anlarız.
+                        const url = new URL(usernameOrSearchTerm);
+
+                        // Eğer buraya geldiysek, girdi bir URL demektir.
+                        // Şimdi bu URL'in GitHub'a ait olup olmadığını kontrol edelim.
+                        if (url.hostname === 'github.com' || url.hostname === 'www.github.com') {
+                            const username = url.pathname.split('/')[1];
+                            if (username) {
+                                // DURUM 1: Geçerli bir GitHub linki.
+                                userInputForBackend = username;
+                                inputTypeForBackend = 'direct_username';
+                            } else {
+                                // Örneğin: sadece "https://github.com/" girilmiş.
+                                throw new Error("Geçersiz GitHub linki. Link bir kullanıcı adı içermiyor.");
+                            }
+                        } else {
+                            // DURUM 2: Geçerli ama GitHub OLMAYAN bir link.
+                            showError("Hatalı giriş yaptınız. Lütfen sadece aramak için bir isim ve soyisim girin, eğer elinizde hazır bir bağlantı varsa bunu manuel ekleme kısmından ekleyip burayı boş bırakabilirsiniz.");
+                            loader.classList.add('hidden'); // Loader'ı gizle
+                            return; // İşlemi tamamen durdur.
+                        }
+                    } catch (e) {
+                        // Eğer "new URL()" başarısız olduysa, bu bir link değildir.
+                        // Veya yukarıda fırlattığımız özel hatayı yakaladık.
+                        if (e instanceof TypeError) {
+                            // DURUM 3: Bu bir link değil, bir arama terimi.
+                            userInputForBackend = usernameOrSearchTerm;
+                            inputTypeForBackend = null; // Backend'in arama yapmasına izin ver.
+                        } else {
+                            // "Geçersiz GitHub linki..." gibi özel bir hatayı yakaladık.
+                            showError(e.message);
+                            loader.classList.add('hidden'); // Loader'ı gizle
+                            return;
+                        }
+                    }
+                    // --- YENİ MANTIK SONU ---
+
                 } else {
-                    showError("Lütfen bir Geliştirici Adı veya geçerli bir GitHub linki girin.");
+                    showError("Lütfen bir Geliştirici Adı/Linki girin.");
+                    loader.classList.add('hidden'); // Loader'ı gizle
                     return;
                 }
 
-                // Backend'e analizi başlatması için tek bir istek gönder
-                const analyzedData = await fetchAnalysisFromBackend(platformToAnalyze, userInputForBackend);
+                // Eğer userInputForBackend hala tanımsızsa bir sorun vardır, işlemi durdur.
+                if (!userInputForBackend) {
+                    // Bu normalde olmamalı ama bir güvenlik önlemi.
+                    showError("Girdi işlenemedi. Lütfen tekrar deneyin.");
+                    loader.classList.add('hidden');
+                    return;
+                }
+
+                const analyzedData = await fetchAnalysisFromBackend("github", userInputForBackend, inputTypeForBackend);
                 displayDashboard(analyzedData);
             }
 
@@ -90,11 +135,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Backend'e analiz isteği gönderen ana fonksiyon
-    async function fetchAnalysisFromBackend(platform, userinput) {
-        const url = `${DEVMAP_API_BASE_URL}/api/analyze/${platform}/${encodeURIComponent(userinput)}`;
+    async function fetchAnalysisFromBackend(platform, userInput, inputType = null) {
+        const url = `${DEVMAP_API_BASE_URL}/api/analyze`; // Endpoint artık daha temiz!
+
+        // Gönderilecek veri objesi
+        const requestBody = {
+            platform: platform,
+            user_input: userInput
+        };
+
+        // Eğer inputType belirtilmişse, body'e ekle
+        if (inputType) {
+            requestBody.input_type = inputType;
+        }
 
         const response = await fetch(url, {
-            method: "POST"
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json', // Body'nin JSON olduğunu belirtiyoruz
+            },
+            body: JSON.stringify(requestBody) // objeyi JSON string'ine çeviriyoruz
         });
 
         if (!response.ok) {

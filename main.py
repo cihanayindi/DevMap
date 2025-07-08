@@ -9,12 +9,15 @@ from pydantic import BaseModel
 import httpx 
 from typing import Optional, Annotated
 from datetime import datetime
+import google.generativeai as genai
 
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GENERATIVE_MODEL_NAME = 'gemini-1.5-flash'
 
 if SERPER_API_KEY:
     logging.info("SERPER_API_KEY başarıyla yüklendi.")
@@ -25,6 +28,14 @@ if GITHUB_TOKEN:
     logging.info("GITHUB_TOKEN başarıyla yüklendi.")
 else:
     logging.warning
+
+if GEMINI_API_KEY:
+    logging.info("GEMINI_API_KEY başarıyla yüklendi.")
+    genai.configure(api_key=GEMINI_API_KEY)
+    generative_model = genai.GenerativeModel(model=GENERATIVE_MODEL_NAME)
+    logging.info(f"Google Gemini API '{GENERATIVE_MODEL_NAME}' modeli yapılandırıldı.")
+else:
+    logging.warning("GEMINI_API_KEY bulunamadı veya boş. Lütfen .env dosyanızı kontrol edin.")
 
 class AnalyzeRequest(BaseModel):
     platform: str
@@ -266,7 +277,18 @@ async def send_request_to_githubapi(username: str):
             raise HTTPException(status_code=404, detail=f"GitHub kullanıcısı '{username}' bulunamadı.")
         raise HTTPException(status_code=500, detail=f"GitHub API hatası: {e.response.status_code}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Beklenmeyen hata: {str(e)}")    
+        raise HTTPException(status_code=500, detail=f"Beklenmeyen hata: {str(e)}")
+    
+def send_request_to_gemini(prompt: str):
+    """
+    Google Gemini API'ye istek gönderir ve yanıtı döner.
+    """
+    try:
+        response = generative_model.generate_content(prompt=prompt)
+        return response.text
+    except Exception as e:
+        logging.error(f"Google Gemini API isteği sırasında hata oluştu: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Google Gemini API hatası: {str(e)}")
 
 @app.post("/api/analyze")
 async def analyze_profile(request: AnalyzeRequest):

@@ -2,27 +2,28 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import json
-import logging # Logging kütüphanesini kullanmak için
+import logging 
 from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel
-import httpx # HTTP istekleri için
+import httpx 
 from typing import Optional, Annotated
 
-# Logging seviyesini DEBUG olarak ayarlayalım, böylece daha fazla bilgi görebiliriz
-logging.basicConfig(level=logging.INFO) # Geliştirme aşamasında INFO veya DEBUG olabilir
-                                        # Üretimde WARNING veya ERROR yapabilirsiniz
+logging.basicConfig(level=logging.INFO)
 
-# Serper API veya Google Custom Search API için gerekli
-# .env dosyanızda SERPER_API_KEY veya Google Search_API_KEY ve GOOGLE_CSE_ID olmalı
 load_dotenv()
 SERPER_API_KEY = os.getenv("SERPER_API_KEY")
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
-# SERPER_API_KEY'in başarıyla yüklenip yüklenmediğini kontrol etmek için ek log
 if SERPER_API_KEY:
     logging.info("SERPER_API_KEY başarıyla yüklendi.")
 else:
     logging.warning("SERPER_API_KEY bulunamadı veya boş. Lütfen .env dosyanızı kontrol edin.")
+
+if GITHUB_TOKEN:
+    logging.info("GITHUB_TOKEN başarıyla yüklendi.")
+else:
+    logging.warning
 
 class AnalyzeRequest(BaseModel):
     platform: str
@@ -175,17 +176,26 @@ def extract_username(userinput: str, expected_domain: str) -> str:
         raise HTTPException(status_code=400, detail=f"Geçersiz {expected_domain} linki: {str(e)}")
     
 async def send_request_to_githubapi(username: str):
+    headers = {}
+
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
+
     try:
         # GitHub API'den kullanıcı verilerini çek
         async with httpx.AsyncClient() as client:
-            user_response = await client.get(f"https://api.github.com/users/{username}")
+            user_response = await client.get(f"https://api.github.com/users/{username}", headers=headers)
             user_response.raise_for_status()
             user_data = user_response.json()
 
-            repos_response = await client.get(f"https://api.github.com/users/{username}/repos?per_page=100")
+            repos_response = await client.get(f"https://api.github.com/users/{username}/repos?per_page=100", headers=headers)
             repos_response.raise_for_status()
             repos_data = repos_response.json()
 
+        repo_names = [repo.get("name") for repo in repos_data]
+        logging.info(f"{username} kullanıcısının repo bilgileri: {repos_data}")
+        logging.info(f"{username} kullanıcısının tüm bilgileri: {user_data}")
+        
         languages = {}
         for repo in repos_data:
             if repo.get("language"):

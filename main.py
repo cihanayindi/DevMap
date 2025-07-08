@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 import httpx 
 from typing import Optional, Annotated
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 
@@ -176,57 +177,96 @@ def extract_username(userinput: str, expected_domain: str) -> str:
         raise HTTPException(status_code=400, detail=f"Geçersiz {expected_domain} linki: {str(e)}")
     
 async def send_request_to_githubapi(username: str):
-    headers = {}
-
+    headers = {
+        "Accept": "application/vnd.github.mercy-preview+json"
+    }
     if GITHUB_TOKEN:
         headers["Authorization"] = f"token {GITHUB_TOKEN}"
 
     try:
-        # GitHub API'den kullanıcı verilerini çek
         async with httpx.AsyncClient() as client:
-            user_response = await client.get(f"https://api.github.com/users/{username}", headers=headers)
-            user_response.raise_for_status()
-            user_data = user_response.json()
+            user_resp = await client.get(f"https://api.github.com/users/{username}", headers=headers)
+            user_resp.raise_for_status()
+            user_data = user_resp.json()
 
-            repos_response = await client.get(f"https://api.github.com/users/{username}/repos?per_page=100", headers=headers)
-            repos_response.raise_for_status()
-            repos_data = repos_response.json()
+            repos_resp = await client.get(f"https://api.github.com/users/{username}/repos?per_page=100&type=owner&sort=updated", headers=headers)
+            repos_resp.raise_for_status()
+            repos_data = repos_resp.json()
 
-        repo_names = [repo.get("name") for repo in repos_data]
-        logging.info(f"{username} kullanıcısının repo bilgileri: {repos_data}")
-        logging.info(f"{username} kullanıcısının tüm bilgileri: {user_data}")
-        
-        languages = {}
-        for repo in repos_data:
-            if repo.get("language"):
-                languages[repo["language"]] = languages.get(repo["language"], 0) + 1
+            total_stars = 0
+            language_counts = {}
+            language_bytes = {}
+            repo_summaries = []
+            last_commits = []
 
-        total_stars = sum(repo.get("stargazers_count", 0) for repo in repos_data)
+            for repo in repos_data:
+                repo_name = repo["name"]
+                full_name = repo["full_name"]
+                repo_lang = repo.get("language")
+                stars = repo.get("stargazers_count", 0)
+                total_stars += stars
 
-        analyzed_data = {
-            "platform": "github",
-            "username": username,
-            "avatar_url": user_data.get("avatar_url"),
-            "name": user_data.get("name") or user_data.get("login"),
-            "login": user_data.get("login"),
-            "bio": user_data.get("bio") or 'Kullanıcı bir biyografi belirtmemiş.',
-            "html_url": user_data.get("html_url"),
-            "public_repos": user_data.get("public_repos"),
-            "followers": user_data.get("followers"),
-            "following": user_data.get("following"),
-            "total_stars": total_stars,
-            "languages": languages
-        }
-        return analyzed_data
+                # Basit dil sayımı
+                if repo_lang:
+                    language_counts[repo_lang] = language_counts.get(repo_lang, 0) + 1
+
+                # Dil byte verisi
+                lang_resp = await client.get(f"https://api.github.com/repos/{full_name}/languages", headers=headers)
+                if lang_resp.status_code == 200:
+                    langs = lang_resp.json()
+                    for lang, byte in langs.items():
+                        language_bytes[lang] = language_bytes.get(lang, 0) + byte
+
+                # Repo özeti
+                repo_summaries.append({
+                    "name": repo_name,
+                    "description": repo.get("description"),
+                    "language": repo_lang,
+                    "topics": repo.get("topics", []),
+                    "stars": stars,
+                    "forks": repo.get("forks_count", 0),
+                    "pushed_at": repo.get("pushed_at"),
+                    "created_at": repo.get("created_at"),
+                    "html_url": repo.get("html_url")
+                })
+
+                if repo.get("pushed_at"):
+                    last_commits.append(repo["pushed_at"])
+
+            analyzed_data = {
+                "platform": "github",
+                "username": username,
+                "name": user_data.get("name") or user_data.get("login"),
+                "login": user_data.get("login"),
+                "avatar_url": user_data.get("avatar_url"),
+                "bio": user_data.get("bio") or 'Kullanıcı bir biyografi belirtmemiş.',
+                "html_url": user_data.get("html_url"),
+                "created_at": user_data.get("created_at"),
+                "public_repos": user_data.get("public_repos"),
+                "followers": user_data.get("followers"),
+                "following": user_data.get("following"),
+                "total_stars": total_stars,
+                "most_used_languages": language_counts,
+                "language_bytes": language_bytes,
+                "repos": repo_summaries,
+                "last_commit_activity": max(last_commits) if last_commits else None,
+            }
+
+            # JSON dosyasına yaz
+            filename = f"analyzed_{username}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.json"
+            save_path = os.path.join("data", filename)
+            os.makedirs("data", exist_ok=True)
+            with open(save_path, "w", encoding="utf-8") as f:
+                json.dump(analyzed_data, f, indent=2, ensure_ascii=False)
+
+            return analyzed_data
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             raise HTTPException(status_code=404, detail=f"GitHub kullanıcısı '{username}' bulunamadı.")
-        raise HTTPException(status_code=500, detail=f"GitHub API hatası: {e.response.status_code} - {e.response.text}")
+        raise HTTPException(status_code=500, detail=f"GitHub API hatası: {e.response.status_code}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analiz sırasında bir hata oluştu: {str(e)}")        
-
-
+        raise HTTPException(status_code=500, detail=f"Beklenmeyen hata: {str(e)}")    
 
 @app.post("/api/analyze")
 async def analyze_profile(request: AnalyzeRequest):

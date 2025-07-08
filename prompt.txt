@@ -1,0 +1,41 @@
+Aşağıdaki GitHub kullanıcı verilerine göre yazılımcıyı analiz et ve sonucu **yalnızca aşağıdaki formatta bir JSON** olarak dön. Lütfen **boşluk, başlık ya da açıklama ekleme** – sadece geçerli bir JSON döndür.
+
+### Geri dönmesini istediğim yapı:
+
+{
+  "technologies": [ ... ],                  // Yazılım dilleri, platformlar ve teknoloji alanları (AI, Cloud, IoT gibi)
+  "tools": [ ... ],                         // Kullanılan framework, IDE, notebook ya da araçlar (örnek: Jupyter, PyCharm, Git)
+  "project_insight": [                      // En dikkat çeken projeler (3–5 tane)
+    {
+      "name": "string",                     // Proje adı
+      "description": "string",              // Projenin amacı ve zorluğu, Türkçe olmalı
+      "level": "beginner | intermediate | challenging | advanced",  // Zorluk seviyesi
+      "tags": ["tekilleştirilmiş", "etiketler"] // Konu, teknoloji, yöntem gibi anahtar kelimeler (örn: "ai", "iot", "spark")
+    }
+  ],
+  "activity": {
+    "last_commit": "yyyy-mm-dd",            // Son commit tarihi
+    "public_repos": int,
+    "commits_last_6_months": int,           // Yaklaşık commit sayısı
+    "repos_updated_last_6_months": int,     // Son 6 ayda güncellenmiş repo sayısı
+    "level": "low | medium | high"
+  },
+  "community": {
+    "followers": int,
+    "stars": int,
+    "forks": int,
+    "level": "low | medium | high"
+  },
+  "score": {
+    "value": int,                           // 1–10 arası genel puan
+    "out_of": 10
+  },
+  "summary": {
+    "short": "150 kelimeyi geçmeyen sade ve Türkçe özet.",
+    "long": "Gerekirse 300-500 kelimelik daha detaylı teknik ve Türkçe özet."
+  }
+}
+
+Lütfen yalnızca bu formatta doğru yapıya sahip bir JSON objesi üret. `technologies` alanındaki teknolojiler tekilleştirilmiş olmalı. `tools` alanına yalnızca araç veya ortamlar (örneğin Jupyter, Git, VSCode) yazılmalı. `tags` içinde benzer terimler tekrar etmemeli (örneğin 'AI' ve 'Artificial Intelligence' birlikte bulunmamalı).
+
+İşte JSON verisi:

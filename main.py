@@ -1,3 +1,4 @@
+from click import prompt
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -32,7 +33,7 @@ else:
 if GEMINI_API_KEY:
     logging.info("GEMINI_API_KEY başarıyla yüklendi.")
     genai.configure(api_key=GEMINI_API_KEY)
-    generative_model = genai.GenerativeModel(model=GENERATIVE_MODEL_NAME)
+    generative_model = genai.GenerativeModel(model_name=GENERATIVE_MODEL_NAME)
     logging.info(f"Google Gemini API '{GENERATIVE_MODEL_NAME}' modeli yapılandırıldı.")
 else:
     logging.warning("GEMINI_API_KEY bulunamadı veya boş. Lütfen .env dosyanızı kontrol edin.")
@@ -42,12 +43,12 @@ class AnalyzeRequest(BaseModel):
     user_input: str
     input_type: Optional[str] = None
 
-
 app = FastAPI(title="DevMapAPI")
 
 # CORS ayarları
 origins = [
     "https://developermap.vercel.app/",
+    "https://www.devmap.com.tr/",  # DevMap ana sayfası
     "http://localhost:8080",  # Lokal development sunucusu (FastAPI'nin kendisi)
     "http://127.0.0.1:8080",  # Lokal development sunucusu (FastAPI'nin kendisi)
     "http://localhost:5500",  # Live Server (VS Code) için
@@ -86,7 +87,6 @@ async def search_github_username_via_google(query: str) -> str | None:
         "hl": "tr", # Dil 
         "type": "search", # Arama tipi
         })
-
 
     async with httpx.AsyncClient() as client:
         try:
@@ -269,7 +269,6 @@ async def send_request_to_githubapi(username: str):
             os.makedirs("data", exist_ok=True)
             with open(save_path, "w", encoding="utf-8") as f:
                 json.dump(analyzed_data, f, indent=2, ensure_ascii=False)
-
             return analyzed_data
 
     except httpx.HTTPStatusError as e:
@@ -279,13 +278,62 @@ async def send_request_to_githubapi(username: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Beklenmeyen hata: {str(e)}")
     
+
+def build_gemini_prompt() -> str:
+    """
+    Google Gemini API için kullanılacak prompt'u oluşturur.
+    """
+    return """
+        Aşağıdaki GitHub kullanıcı verilerine göre yazılımcıyı analiz et ve sonucu **yalnızca aşağıdaki formatta bir JSON** olarak dön. Lütfen **boşluk, başlık ya da açıklama ekleme** – sadece geçerli bir JSON döndür.
+
+    ### Geri dönmesini istediğim yapı:
+
+    {
+      "technologies": [ ... ],                  // Yazılım dilleri, platformlar ve teknoloji alanları (AI, Cloud, IoT gibi)
+      "tools": [ ... ],                         // Kullanılan framework, IDE, notebook ya da araçlar (örnek: Jupyter, PyCharm, Git)
+      "project_insight": [                      // En dikkat çeken projeler (3–5 tane)
+        {
+          "name": "string",                     // Proje adı
+          "description": "string",              // Projenin amacı ve zorluğu, Türkçe olmalı
+          "level": "beginner | intermediate | challenging | advanced",  // Zorluk seviyesi
+          "tags": ["tekilleştirilmiş", "etiketler"] // Konu, teknoloji, yöntem gibi anahtar kelimeler (örn: "ai", "iot", "spark")
+        }
+      ],
+      "activity": {
+        "last_commit": "yyyy-mm-dd",            // Son commit tarihi
+        "public_repos": int,
+        "commits_last_6_months": int,           // Yaklaşık commit sayısı
+        "repos_updated_last_6_months": int,     // Son 6 ayda güncellenmiş repo sayısı
+        "level": "low | medium | high"
+      },
+      "community": {
+        "followers": int,
+        "stars": int,
+        "forks": int,
+        "level": "low | medium | high"
+      },
+      "score": {
+        "value": int,                           // 1–10 arası genel puan
+        "out_of": 10
+      },
+      "summary": {
+        "short": "150 kelimeyi geçmeyen sade ve Türkçe özet.",
+        "long": "Gerekirse 300-500 kelimelik daha detaylı teknik ve Türkçe özet."
+      }
+    }
+
+    Lütfen yalnızca bu formatta doğru yapıya sahip bir JSON objesi üret. `technologies` alanındaki teknolojiler tekilleştirilmiş olmalı. `tools` alanına yalnızca araç veya ortamlar (örneğin Jupyter, Git, VSCode) yazılmalı. `tags` içinde benzer terimler tekrar etmemeli (örneğin 'AI' ve 'Artificial Intelligence' birlikte bulunmamalı).
+
+    İşte JSON verisi:"""
+        
+
 def send_request_to_gemini(prompt: str):
     """
     Google Gemini API'ye istek gönderir ve yanıtı döner.
     """
     try:
-        response = generative_model.generate_content(prompt=prompt)
-        return response.text
+        response = generative_model.generate_content([prompt])
+        return response.candidates[0].content.parts[0].text
     except Exception as e:
         logging.error(f"Google Gemini API isteği sırasında hata oluştu: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Google Gemini API hatası: {str(e)}")
@@ -322,8 +370,11 @@ async def analyze_profile(request: AnalyzeRequest):
 
         if not github_username:
             raise HTTPException(status_code=400, detail="Geçerli bir GitHub kullanıcı adı belirlenemedi.")
-
-        return await send_request_to_githubapi(github_username)
+        
+        cikti = await send_request_to_githubapi(github_username)
+        gemini_cikti = send_request_to_gemini(prompt = build_gemini_prompt() + json.dumps(cikti, ensure_ascii=False))
+        print("Google Gemini API yanıtı:", gemini_cikti)
+        return cikti
 
     elif platform == "kaggle":
         raise HTTPException(status_code=501, detail="Kaggle desteği henüz yok.")

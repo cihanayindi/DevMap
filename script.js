@@ -164,13 +164,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return response.json();
     }
 
-    // Eski GitHub API çağırma ve analiz fonksiyonları artık kullanılmayacak
-    // async function fetchUserData(username) { ... }
-    // async function fetchReposData(username) { ... }
-    // function analyzeGitHubData(userData, reposData) { ... }
-
-    // ... (displayDashboard, createLanguageChart, showError, resetUI fonksiyonları aynı kalacak) ...
-
     function displayDashboard(data) {
         document.getElementById('user-avatar').src = data.avatar_url;
         document.getElementById('user-name').textContent = data.name;
